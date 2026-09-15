@@ -96,7 +96,16 @@
 
   <section class="card">
     <h2><span class="num">03</span> 生成 APK</h2>
-    <p class="hint">配置只在本机处理，不上传网站数据</p>
+    <p class="hint" id="modeHint">配置只在本机处理，不上传网站数据</p>
+
+    <label class="field" id="repoField" hidden>
+      <span>GitHub 仓库（用户名/仓库名）</span>
+      <input id="ghRepo" type="text" placeholder="HJGSfz68/lumen-mobile-studio" autocomplete="off">
+    </label>
+    <label class="field" id="tokenField" hidden>
+      <span>GitHub Token（需要 repo 权限，仅保存在本机浏览器）</span>
+      <input id="ghToken" type="password" placeholder="ghp_..." autocomplete="off">
+    </label>
 
     <button class="btn generate" id="generate">生成可安装 APK</button>
 

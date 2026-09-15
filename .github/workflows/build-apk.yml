@@ -1,0 +1,86 @@
+name: Build APK
+
+on:
+  repository_dispatch:
+    types: [build-apk]
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'APK 配置 JSON'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve config
+        id: cfg
+        env:
+          DISPATCH_PAYLOAD: ${{ github.event.client_payload.config || github.event.inputs.config }}
+        run: |
+          echo "$DISPATCH_PAYLOAD" > /tmp/config.json
+          PKG=$(python3 -c "import json;print(json.load(open('/tmp/config.json'))['packageName'])")
+          SAFE=$(echo "$PKG" | tr '.' '_')
+          echo "safe=$SAFE" >> $GITHUB_OUTPUT
+          echo "pkg=$PKG" >> $GITHUB_OUTPUT
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+
+      - name: Decode icon
+        if: ${{ github.event.client_payload.iconData != '' }}
+        env:
+          ICON_B64: ${{ github.event.client_payload.iconData }}
+        run: |
+          python3 -c "
+          import base64, os
+          d = os.environ['ICON_B64']
+          if ',' in d: d = d.split(',', 1)[1]
+          open('/tmp/icon.png', 'wb').write(base64.b64decode(d))
+          "
+          python3 -c "
+          import json
+          c = json.load(open('/tmp/config.json'))
+          c['iconPath'] = '/tmp/icon.png'
+          json.dump(c, open('/tmp/config.json', 'w'))
+          "
+
+      - name: Build APK
+        run: |
+          sed -i 's|/opt/android-sdk|${ANDROID_HOME}|g; s|\$ANDROID_HOME/build-tools/34.0.0|$ANDROID_HOME/build-tools/34.0.0|' server/build_apk.sh
+          bash server/build_apk.sh /tmp/config.json "/tmp/${{ steps.cfg.outputs.safe }}.apk"
+
+      - name: Rename artifact
+        run: cp "/tmp/${{ steps.cfg.outputs.safe }}.apk" "/tmp/lumen-${{ steps.cfg.outputs.safe }}-v${{ github.run_number }}.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ steps.cfg.outputs.safe }}
+          path: /tmp/lumen-*.apk
+          retention-days: 30
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "build-${{ github.run_number }}" \
+            --title "APK ${{ steps.cfg.outputs.pkg }} · run ${{ github.run_number }}" \
+            --notes "包名 ${{ steps.cfg.outputs.pkg }}，由 Actions 自动构建" \
+            /tmp/lumen-*.apk
