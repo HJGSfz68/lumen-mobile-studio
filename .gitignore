@@ -174,3 +174,9 @@
 *.lz
 *.lzma
 *.iso
+
+# Build artifacts & signing
+server/output/
+server/.keystore
+*.apk
+*.idsig
